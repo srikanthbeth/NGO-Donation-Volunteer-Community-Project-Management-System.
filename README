@@ -1,1 +1,461 @@
-Generic single-database configuration.
+# NGO Donation, Volunteer & Community Project Management System
+
+## Project Overview
+
+The NGO Donation, Volunteer & Community Project Management System is a RESTful backend application developed using FastAPI and Python.
+
+The system helps Non-Governmental Organizations (NGOs) manage donors, donations, volunteers, fundraising campaigns, community projects, expenses, budgets, resources, beneficiaries, and impact reports through a centralized platform.
+
+It provides secure authentication, role-based access control, data validation, database management, and reporting capabilities.
+
+## Project Objectives
+
+- Manage donor registration and donor profiles.
+- Track donations and payment statuses.
+- Create and manage fundraising campaigns.
+- Manage volunteers and volunteer assignments.
+- Create and monitor community development projects.
+- Track project milestones and tasks.
+- Manage project approvals.
+- Record and approve organizational expenses.
+- Manage budgets and resource allocation.
+- Maintain beneficiary information and assistance records.
+- Generate impact reports and donation receipts.
+- Maintain audit logs for important organizational activities.
+
+## Technology Stack
+
+| Technology | Purpose |
+|---|---|
+| Python 3.11+ | Backend programming |
+| FastAPI | REST API framework |
+| Pydantic | Data validation and serialization |
+| SQLAlchemy | ORM and database operations |
+| PostgreSQL | Relational database |
+| JWT | Authentication |
+| Alembic | Database migrations |
+| Pytest | Automated testing |
+| Swagger UI | API documentation |
+| Uvicorn | ASGI application server |
+| python-dotenv | Environment configuration |
+
+## User Roles and Permissions
+
+The application supports six user roles:
+
+1. **Super Admin** – Full system administration and access.
+2. **NGO Manager** – Manages NGO operations, campaigns, and projects.
+3. **Finance Officer** – Handles donations, financial records, budgets, and expenses.
+4. **Volunteer Coordinator** – Manages volunteers and assignments.
+5. **Volunteer** – Accesses permitted volunteer activities.
+6. **Donor** – Manages donor profile and views permitted donation information.
+
+Role-based permissions protect restricted API operations.
+
+## Main Modules
+
+### 1. Authentication and User Management
+- User registration
+- User login
+- JWT access tokens
+- Refresh tokens
+- Password hashing
+- Password reset functionality
+- Role-based access control
+- User management
+
+### 2. Donor Management
+- Create donor profiles
+- View donor information
+- Update donor profiles
+- Individual and organization donors
+- Donor-specific access restrictions
+
+### 3. Campaign Management
+- Create fundraising campaigns
+- View campaign details
+- List campaigns
+- Manage campaign information
+- Campaign status management
+
+### 4. Donation Management
+- Record donations
+- Track donation amounts and currencies
+- Associate donations with campaigns
+- Track payment status
+- Update successful donation totals
+- View donor-specific donation history
+- Generate donation receipts
+
+### 5. Volunteer Management
+- Register volunteers
+- Manage volunteer profiles
+- Assign volunteers
+- Track volunteer assignments
+- Manage assignment information
+
+### 6. Community Project Management
+- Create and manage projects
+- Track project milestones
+- Manage project tasks
+- Approve projects
+- Monitor project progress
+
+### 7. Expense Management
+- Record organizational expenses
+- Manage expense approvals
+- Track expense information
+- Maintain financial records
+
+### 8. Budget Management
+- Create budgets
+- Manage budget allocations
+- Track financial utilization
+
+### 9. Resource Management
+- Manage organizational resources
+- Track resource transactions
+- Allocate resources
+- Maintain resource movement records
+
+### 10. Beneficiary Management
+- Register beneficiaries
+- Manage beneficiary information
+- Associate beneficiaries with projects
+- Record beneficiary assistance
+
+### 11. Impact Management
+- Maintain project impact updates
+- Track community outcomes
+- Generate impact information
+
+### 12. Donation Receipts
+- Generate donation receipts
+- Associate receipts with donations
+- Retrieve receipt information
+
+### 13. Dashboard
+- Centralized dashboard endpoints
+- Access relevant organizational information
+
+### 14. Reports
+- Generate organizational reports
+- Restrict report access based on user roles
+- Support report-related API operations
+
+### 15. Audit Logs
+- Maintain audit log records
+- Store actor information
+- Record action and entity details
+- Store timestamps
+- Preserve relevant change details
+- Provide authorized audit-log listing and retrieval
+
+## Project Structure
+
+```text
+ngo_management_system/
+│
+├── alembic/
+│   ├── versions/
+│   └── env.py
+│
+├── core/
+│   ├── config.py
+│   └── security.py
+│
+├── db/
+│   ├── base.py
+│   └── session.py
+│
+├── models/
+│   ├── user.py
+│   ├── donor.py
+│   ├── campaign.py
+│   ├── donation.py
+│   ├── volunteer.py
+│   ├── volunteer_assignment.py
+│   ├── project.py
+│   ├── project_milestone.py
+│   ├── project_task.py
+│   ├── project_approval.py
+│   ├── expense.py
+│   ├── budget.py
+│   ├── resource.py
+│   ├── resource_transaction.py
+│   ├── resource_allocation.py
+│   ├── beneficiary.py
+│   ├── beneficiary_project.py
+│   ├── beneficiary_assistance.py
+│   ├── impact_update.py
+│   ├── receipt.py
+│   └── audit_log.py
+│
+├── schemas/
+│   └── Request and response validation schemas
+│
+├── repo/
+│   └── Repository layer
+│
+├── services/
+│   └── Business logic services
+│
+├── routes/
+│   ├── Authentication routes
+│   ├── User routes
+│   ├── Donor routes
+│   ├── Campaign routes
+│   ├── Donation routes
+│   ├── Volunteer routes
+│   ├── Project routes
+│   ├── Expense routes
+│   ├── Budget routes
+│   ├── Resource routes
+│   ├── Beneficiary routes
+│   ├── Impact routes
+│   ├── Dashboard routes
+│   ├── Report routes
+│   └── Audit log routes
+│
+├── tests/
+│   ├── test_auth.py
+│   ├── test_donors.py
+│   ├── test_campaigns.py
+│   ├── test_donations.py
+│   ├── Other module test files
+│   └── Additional integration tests
+│
+├── .env
+├── .gitignore
+├── alembic.ini
+├── main.py
+├── requirements.txt
+└── README.md
+```
+
+## Installation and Setup
+
+### 1. Clone the repository
+
+```bash
+git clone <your-repository-url>
+cd ngo_management_system
+```
+
+### 2. Create a virtual environment
+
+```bash
+python -m venv .venv
+```
+
+### 3. Activate the virtual environment
+
+Windows PowerShell:
+
+```powershell
+.\.venv\Scripts\Activate.ps1
+```
+
+### 4. Install dependencies
+
+```bash
+pip install -r requirements.txt
+```
+
+### 5. Configure environment variables
+
+Create a `.env` file in the project root.
+
+```env
+APP_NAME=NGO Donation Volunteer Community Management API
+ENVIRONMENT=development
+
+DATABASE_URL=postgresql+psycopg://postgres:YOUR_PASSWORD@localhost:5433/ngo_management_system
+
+TEST_DATABASE_URL=postgresql+psycopg://postgres:YOUR_PASSWORD@localhost:5433/ngo_management_system_test
+
+JWT_SECRET_KEY=YOUR_SECRET_KEY
+JWT_ALGORITHM=HS256
+ACCESS_TOKEN_EXPIRE_MINUTES=30
+REFRESH_TOKEN_EXPIRE_DAYS=7
+```
+
+Replace `YOUR_PASSWORD` and `YOUR_SECRET_KEY` with your own values.
+
+Never commit your `.env` file to a public repository.
+
+### 6. Run database migrations
+
+```bash
+alembic upgrade head
+```
+
+Check the current migration:
+
+```bash
+alembic current
+```
+
+### 7. Start the application
+
+```bash
+uvicorn main:app --reload
+```
+
+The application runs at:
+
+http://127.0.0.1:8000
+
+## API Documentation
+
+FastAPI automatically generates interactive API documentation.
+
+**Swagger UI:**
+
+http://127.0.0.1:8000/docs
+
+**ReDoc:**
+
+http://127.0.0.1:8000/redoc
+
+Use Swagger UI to explore endpoints, authenticate, submit requests, and inspect responses.
+
+## Automated Testing
+
+The project uses Pytest for automated testing.
+
+### Run all tests
+
+```powershell
+python -m pytest .\tests -v
+```
+
+### Run all tests with a short summary
+
+```powershell
+python -m pytest .\tests -q
+```
+
+### Run a specific test module
+
+```powershell
+python -m pytest .\tests\test_auth.py -v
+python -m pytest .\tests\test_donors.py -v
+python -m pytest .\tests\test_campaigns.py -v
+python -m pytest .\tests\test_donations.py -v
+python -m pytest .\tests\test_reports.py -v
+```
+
+## Test Execution Results
+
+<details>
+<summary>Verified full test execution output — October 2026</summary>
+
+```text
+Command:
+python -m pytest .\tests -q
+
+....................................................................... [ 16%]
+....................................................................... [ 33%]
+....................................................................... [ 50%]
+....................................................................... [ 67%]
+....................................................................... [ 84%]
+...................................................................     [100%]
+
+============================== warnings summary ==============================
+
+StarletteDeprecationWarning:
+Using httpx with starlette.testclient is deprecated;
+install httpx2 instead.
+
+==============================
+
+422 passed, 1 warning in 126.40s (0:02:06)
+```
+
+</details>
+
+### Final Test Summary
+
+| Test Result | Count |
+|---|---:|
+| Total passed | **422** |
+| Failed | **0** |
+| Errors | **0** |
+| Warnings | 1 |
+| Execution time | 126.40 seconds |
+
+**Overall Result: 422 TESTS PASSED SUCCESSFULLY**
+
+The single warning relates to the Starlette TestClient/httpx deprecation and did not affect test success.
+
+## Application Server Verification
+
+The application was started successfully using:
+
+```powershell
+uvicorn main:app --reload
+```
+
+Startup output:
+
+```text
+INFO: Uvicorn running on http://127.0.0.1:8000
+INFO: Application startup complete.
+```
+
+Swagger documentation was accessed successfully:
+
+```text
+GET /docs         200 OK
+GET /openapi.json 200 OK
+```
+
+## Database and Migration
+
+- PostgreSQL database integration.
+- SQLAlchemy ORM.
+- Alembic migration management.
+- Separate development and test database configurations.
+- Audit log database migration.
+
+## Security Features
+
+- JWT authentication.
+- Password hashing.
+- Role-based authorization.
+- Protected API endpoints.
+- Input validation using Pydantic.
+- Restricted donor and volunteer access.
+- Authorized audit-log retrieval.
+
+## Future Enhancements
+
+- Payment gateway integration.
+- Email and SMS notifications.
+- Advanced analytics and dashboards.
+- Cloud deployment.
+- Frontend integration.
+- Automated audit event coverage for all business operations.
+
+## Conclusion
+
+The NGO Donation, Volunteer & Community Project Management System provides a structured backend solution for managing NGO operations.
+
+The application includes authentication, donor management, donations, campaigns, volunteers, community projects, financial management, resources, beneficiaries, impact reporting, and audit-log functionality.
+
+The complete existing automated test suite was executed successfully, with **422 passed tests and zero failures**.
+
+---
+
+**Project:** NGO Donation, Volunteer & Community Project Management System
+
+**Backend:** Python, FastAPI
+
+**Database:** PostgreSQL
+
+**Testing Framework:** Pytest
+
+**Verified Test Result:** 422 Passed
+
+**Status:** Backend test suite passed successfully.
