@@ -1,122 +1,174 @@
 
 from datetime import datetime
-from typing import Optional
+from typing import Literal, Optional
 
-from sqlalchemy import (
-    CheckConstraint,
-    DateTime,
-    ForeignKey,
-    Integer,
-    String,
-    Text,
-    func,
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    field_validator,
 )
-from sqlalchemy.dialects.postgresql import JSONB
-from sqlalchemy.orm import Mapped, mapped_column
-
-from sqlalchemy.orm import relationship
-from models.user import User
-
-from db.base import Base
 
 
-class Volunteer(Base):
-    __tablename__ = "volunteers"
+AvailabilityType = Literal[
+    "WEEKDAYS",
+    "WEEKENDS",
+    "EVENINGS",
+    "FLEXIBLE",
+    "CUSTOM",
+]
 
-    __table_args__ = (
-        CheckConstraint(
-            "experience_years >= 0",
-            name="ck_volunteers_experience_nonnegative",
-        ),
-        CheckConstraint(
-            "hours_per_week >= 0 AND hours_per_week <= 168",
-            name="ck_volunteers_hours_per_week",
-        ),
-        CheckConstraint(
-            "availability IN "
-            "('WEEKDAYS', 'WEEKENDS', 'EVENINGS', 'FLEXIBLE', 'CUSTOM')",
-            name="ck_volunteers_availability",
-        ),
-        CheckConstraint(
-            "status IN ('PENDING', 'ACTIVE', 'INACTIVE')",
-            name="ck_volunteers_status",
-        ),
+VolunteerStatus = Literal[
+    "PENDING",
+    "ACTIVE",
+    "INACTIVE",
+]
+
+
+class VolunteerBase(BaseModel):
+    bio: Optional[str] = Field(
+        default=None,
+        max_length=5000,
     )
 
-    id: Mapped[int] = mapped_column(
-        Integer,
-        primary_key=True,
-        index=True,
+    skills: list[str] = Field(
+        default_factory=list,
+        max_length=50,
     )
 
-    user_id: Mapped[int] = mapped_column(
-        ForeignKey("users.id", ondelete="CASCADE"),
-        unique=True,
-        nullable=False,
-        index=True,
-    )
+    availability: AvailabilityType = "FLEXIBLE"
 
-    bio: Mapped[Optional[str]] = mapped_column(
-        Text,
-        nullable=True,
-    )
-
-    skills: Mapped[list[str]] = mapped_column(
-        JSONB,
-        nullable=False,
-        default=list,
-    )
-
-    availability: Mapped[str] = mapped_column(
-        String(20),
-        nullable=False,
-        default="FLEXIBLE",
-    )
-
-    hours_per_week: Mapped[int] = mapped_column(
-        Integer,
-        nullable=False,
+    hours_per_week: int = Field(
         default=0,
+        ge=0,
+        le=168,
     )
 
-    experience_years: Mapped[int] = mapped_column(
-        Integer,
-        nullable=False,
+    experience_years: int = Field(
         default=0,
+        ge=0,
+        le=100,
     )
 
-    preferred_areas: Mapped[Optional[str]] = mapped_column(
-        Text,
-        nullable=True,
+    preferred_areas: Optional[str] = Field(
+        default=None,
+        max_length=2000,
     )
 
-    emergency_contact_name: Mapped[Optional[str]] = mapped_column(
-        String(120),
-        nullable=True,
+    emergency_contact_name: Optional[str] = Field(
+        default=None,
+        max_length=120,
     )
 
-    emergency_contact_phone: Mapped[Optional[str]] = mapped_column(
-        String(25),
-        nullable=True,
+    emergency_contact_phone: Optional[str] = Field(
+        default=None,
+        max_length=25,
     )
 
-    status: Mapped[str] = mapped_column(
-        String(20),
-        nullable=False,
-        default="PENDING",
+    @field_validator("skills")
+    @classmethod
+    def validate_skills(cls, skills: list[str]) -> list[str]:
+        cleaned = []
+
+        for skill in skills:
+            skill = skill.strip()
+
+            if not skill:
+                raise ValueError("Skills cannot contain blank values.")
+
+            if len(skill) > 100:
+                raise ValueError(
+                    "Each skill must contain at most 100 characters."
+                )
+
+            if skill not in cleaned:
+                cleaned.append(skill)
+
+        return cleaned
+
+    @field_validator(
+        "bio",
+        "preferred_areas",
+        "emergency_contact_name",
+        "emergency_contact_phone",
+    )
+    @classmethod
+    def strip_optional_strings(
+        cls,
+        value: Optional[str],
+    ) -> Optional[str]:
+        if value is None:
+            return None
+
+        value = value.strip()
+        return value or None
+
+
+class VolunteerCreate(VolunteerBase):
+    pass
+
+
+class VolunteerUpdate(BaseModel):
+    bio: Optional[str] = Field(default=None, max_length=5000)
+    skills: Optional[list[str]] = Field(default=None, max_length=50)
+    availability: Optional[AvailabilityType] = None
+    hours_per_week: Optional[int] = Field(default=None, ge=0, le=168)
+    experience_years: Optional[int] = Field(default=None, ge=0, le=100)
+    preferred_areas: Optional[str] = Field(default=None, max_length=2000)
+    emergency_contact_name: Optional[str] = Field(
+        default=None,
+        max_length=120,
+    )
+    emergency_contact_phone: Optional[str] = Field(
+        default=None,
+        max_length=25,
     )
 
-    created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True),
-        nullable=False,
-        server_default=func.now(),
-    )
+    @field_validator("skills")
+    @classmethod
+    def validate_optional_skills(
+        cls,
+        skills: Optional[list[str]],
+    ) -> Optional[list[str]]:
+        if skills is None:
+            return None
 
-    updated_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True),
-        nullable=False,
-        server_default=func.now(),
-        onupdate=func.now(),
-    )
+        return VolunteerBase.validate_skills(skills)
 
-    user: Mapped["User"] = relationship("User")
+    @field_validator(
+        "bio",
+        "preferred_areas",
+        "emergency_contact_name",
+        "emergency_contact_phone",
+    )
+    @classmethod
+    def strip_optional_strings(
+        cls,
+        value: Optional[str],
+    ) -> Optional[str]:
+        if value is None:
+            return None
+
+        value = value.strip()
+        return value or None
+
+
+class VolunteerStatusUpdate(BaseModel):
+    status: VolunteerStatus
+
+
+class VolunteerResponse(VolunteerBase):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    user_id: int
+    status: VolunteerStatus
+    created_at: datetime
+    updated_at: datetime
+
+
+class VolunteerListResponse(BaseModel):
+    items: list[VolunteerResponse]
+    total: int
+    page: int
+    page_size: int

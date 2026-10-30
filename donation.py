@@ -1,106 +1,93 @@
 
-from datetime import datetime, timezone
+from datetime import datetime
 from decimal import Decimal
+from typing import Literal
 
-from sqlalchemy import (
-    CheckConstraint,
-    DateTime,
-    ForeignKey,
-    Index,
-    Numeric,
-    String,
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    field_validator,
 )
-from sqlalchemy.orm import Mapped, mapped_column
-
-from db.base import Base
 
 
-class Donation(Base):
-    __tablename__ = "donations"
+PaymentMethod = Literal[
+    "CASH",
+    "BANK_TRANSFER",
+    "CARD",
+    "UPI",
+    "CHEQUE",
+    "OTHER",
+]
 
-    __table_args__ = (
-        CheckConstraint(
-            "amount > 0",
-            name="ck_donations_amount_positive",
-        ),
-        CheckConstraint(
-            "currency ~ '^[A-Z]{3}$'",
-            name="ck_donations_currency_format",
-        ),
-        CheckConstraint(
-            "payment_method IN "
-            "('CASH', 'BANK_TRANSFER', 'CARD', 'UPI', 'CHEQUE', 'OTHER')",
-            name="ck_donations_payment_method",
-        ),
-        CheckConstraint(
-            "payment_status IN "
-            "('PENDING', 'SUCCESSFUL', 'FAILED', 'REFUNDED')",
-            name="ck_donations_payment_status",
-        ),
-        Index("ix_donations_donor_status", "donor_id", "payment_status"),
-        Index("ix_donations_campaign_status", "campaign_id", "payment_status"),
-        Index("ix_donations_created_at", "created_at"),
+PaymentStatus = Literal[
+    "PENDING",
+    "SUCCESSFUL",
+    "FAILED",
+    "REFUNDED",
+]
+
+
+class DonationCreate(BaseModel):
+    campaign_id: int = Field(gt=0)
+    donor_id: int | None = Field(default=None, gt=0)
+    amount: Decimal = Field(gt=0, max_digits=12, decimal_places=2)
+    currency: str = Field(default="INR", min_length=3, max_length=3)
+    payment_method: PaymentMethod
+    notes: str | None = Field(default=None, max_length=500)
+
+    @field_validator("currency")
+    @classmethod
+    def validate_currency(cls, value: str) -> str:
+        value = value.strip().upper()
+        if len(value) != 3 or not value.isalpha():
+            raise ValueError("Currency must be a three-letter code")
+        return value
+
+    @field_validator("notes")
+    @classmethod
+    def clean_notes(cls, value):
+        if value is None:
+            return None
+        value = value.strip()
+        return value or None
+
+
+class DonationStatusUpdate(BaseModel):
+    payment_status: PaymentStatus
+    transaction_reference: str | None = Field(
+        default=None,
+        max_length=150,
     )
 
-    id: Mapped[int] = mapped_column(
-        primary_key=True,
-        index=True,
-    )
+    @field_validator("transaction_reference")
+    @classmethod
+    def clean_reference(cls, value):
+        if value is None:
+            return None
+        value = value.strip()
+        return value or None
 
-    donor_id: Mapped[int] = mapped_column(
-        ForeignKey("donors.id", ondelete="RESTRICT"),
-        nullable=False,
-        index=True,
-    )
 
-    campaign_id: Mapped[int] = mapped_column(
-        ForeignKey("campaigns.id", ondelete="RESTRICT"),
-        nullable=False,
-        index=True,
-    )
+class DonationResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
 
-    amount: Mapped[Decimal] = mapped_column(
-        Numeric(12, 2),
-        nullable=False,
-    )
+    id: int
+    donor_id: int
+    campaign_id: int
+    amount: Decimal
+    currency: str
+    payment_method: PaymentMethod
+    payment_status: PaymentStatus
+    transaction_reference: str | None
+    notes: str | None
+    created_at: datetime
+    updated_at: datetime
 
-    currency: Mapped[str] = mapped_column(
-        String(3),
-        nullable=False,
-        default="INR",
-    )
 
-    payment_method: Mapped[str] = mapped_column(
-        String(20),
-        nullable=False,
-    )
-
-    payment_status: Mapped[str] = mapped_column(
-        String(20),
-        nullable=False,
-        default="PENDING",
-    )
-
-    transaction_reference: Mapped[str | None] = mapped_column(
-        String(150),
-        nullable=True,
-        unique=True,
-    )
-
-    notes: Mapped[str | None] = mapped_column(
-        String(500),
-        nullable=True,
-    )
-
-    created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True),
-        nullable=False,
-        default=lambda: datetime.now(timezone.utc),
-    )
-
-    updated_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True),
-        nullable=False,
-        default=lambda: datetime.now(timezone.utc),
-        onupdate=lambda: datetime.now(timezone.utc),
-    )
+class DonationListResponse(BaseModel):
+    items: list[DonationResponse]
+    total: int
+    page: int
+    page_size: int
+    pages: int

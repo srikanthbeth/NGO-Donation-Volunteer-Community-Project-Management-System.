@@ -1,111 +1,97 @@
 
-from datetime import datetime, timezone
+from datetime import datetime
+from typing import Literal
 
-from sqlalchemy import (
-    Boolean,
-    CheckConstraint,
-    DateTime,
-    ForeignKey,
-    Index,
-    Integer,
-    String,
-)
-from sqlalchemy.orm import Mapped, mapped_column
-
-from db.base import Base
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 
-class Donor(Base):
-    __tablename__ = "donors"
+DonorType = Literal["INDIVIDUAL", "ORGANIZATION"]
+ContactMethod = Literal["EMAIL", "PHONE", "SMS"]
 
-    __table_args__ = (
-        CheckConstraint(
-            "donor_type IN ('INDIVIDUAL', 'ORGANIZATION')",
-            name="ck_donors_donor_type",
-        ),
-        CheckConstraint(
-            "preferred_contact_method IN ('EMAIL', 'PHONE', 'SMS')",
-            name="ck_donors_contact_method",
-        ),
-        Index("ix_donors_city_country", "city", "country"),
-        Index("ix_donors_donor_type", "donor_type"),
+
+class DonorCreate(BaseModel):
+    user_id: int | None = Field(default=None, gt=0)
+    donor_type: DonorType = "INDIVIDUAL"
+    organization_name: str | None = Field(default=None, max_length=200)
+    phone: str | None = Field(default=None, max_length=25)
+    address: str | None = Field(default=None, max_length=300)
+    city: str | None = Field(default=None, max_length=100)
+    state: str | None = Field(default=None, max_length=100)
+    country: str | None = Field(default=None, max_length=100)
+    postal_code: str | None = Field(default=None, max_length=20)
+    preferred_contact_method: ContactMethod = "EMAIL"
+    anonymous_default: bool = False
+
+    @field_validator(
+        "organization_name", "phone", "address", "city",
+        "state", "country", "postal_code",
     )
+    @classmethod
+    def strip_optional_text(cls, value):
+        if value is None:
+            return None
+        value = value.strip()
+        return value or None
 
-    id: Mapped[int] = mapped_column(
-        Integer,
-        primary_key=True,
-        index=True,
-    )
+    @model_validator(mode="after")
+    def validate_organization(self):
+        if self.donor_type == "ORGANIZATION" and not self.organization_name:
+            raise ValueError(
+                "organization_name is required for organization donors"
+            )
+        if self.donor_type == "INDIVIDUAL" and self.organization_name:
+            raise ValueError(
+                "organization_name is only allowed for organization donors"
+            )
+        return self
 
-    user_id: Mapped[int] = mapped_column(
-        ForeignKey("users.id", ondelete="CASCADE"),
-        unique=True,
-        nullable=False,
-        index=True,
-    )
 
-    donor_type: Mapped[str] = mapped_column(
-        String(20),
-        nullable=False,
-        default="INDIVIDUAL",
-    )
+class DonorUpdate(BaseModel):
+    donor_type: DonorType | None = None
+    organization_name: str | None = Field(default=None, max_length=200)
+    phone: str | None = Field(default=None, max_length=25)
+    address: str | None = Field(default=None, max_length=300)
+    city: str | None = Field(default=None, max_length=100)
+    state: str | None = Field(default=None, max_length=100)
+    country: str | None = Field(default=None, max_length=100)
+    postal_code: str | None = Field(default=None, max_length=20)
+    preferred_contact_method: ContactMethod | None = None
+    anonymous_default: bool | None = None
 
-    organization_name: Mapped[str | None] = mapped_column(
-        String(200),
-        nullable=True,
+    @field_validator(
+        "organization_name", "phone", "address", "city",
+        "state", "country", "postal_code",
     )
+    @classmethod
+    def strip_optional_text(cls, value):
+        if value is None:
+            return None
+        value = value.strip()
+        return value or None
 
-    phone: Mapped[str | None] = mapped_column(
-        String(25),
-        nullable=True,
-    )
 
-    address: Mapped[str | None] = mapped_column(
-        String(300),
-        nullable=True,
-    )
+class DonorResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
 
-    city: Mapped[str | None] = mapped_column(
-        String(100),
-        nullable=True,
-    )
+    id: int
+    user_id: int
+    donor_type: DonorType
+    organization_name: str | None
+    phone: str | None
+    address: str | None
+    city: str | None
+    state: str | None
+    country: str | None
+    postal_code: str | None
+    preferred_contact_method: ContactMethod
+    anonymous_default: bool
+    created_at: datetime
+    updated_at: datetime
 
-    state: Mapped[str | None] = mapped_column(
-        String(100),
-        nullable=True,
-    )
 
-    country: Mapped[str | None] = mapped_column(
-        String(100),
-        nullable=True,
-    )
-
-    postal_code: Mapped[str | None] = mapped_column(
-        String(20),
-        nullable=True,
-    )
-
-    preferred_contact_method: Mapped[str] = mapped_column(
-        String(10),
-        nullable=False,
-        default="EMAIL",
-    )
-
-    anonymous_default: Mapped[bool] = mapped_column(
-        Boolean,
-        nullable=False,
-        default=False,
-    )
-
-    created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True),
-        nullable=False,
-        default=lambda: datetime.now(timezone.utc),
-    )
-
-    updated_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True),
-        nullable=False,
-        default=lambda: datetime.now(timezone.utc),
-        onupdate=lambda: datetime.now(timezone.utc),
-    )
+class DonorListResponse(BaseModel):
+    items: list[DonorResponse]
+    total: int
+    page: int
+    page_size: int
+    pages: int

@@ -1,94 +1,74 @@
 
-from datetime import datetime, timezone
+from datetime import datetime
+from typing import Literal
 
-from sqlalchemy import (
-    CheckConstraint,
-    DateTime,
-    ForeignKey,
-    Index,
-    String,
-    Text,
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    field_validator,
 )
-from sqlalchemy.orm import Mapped, mapped_column
-
-from db.base import Base
 
 
-class ProjectApproval(Base):
-    __tablename__ = "project_approvals"
+ApprovalStatus = Literal["PENDING", "APPROVED", "REJECTED"]
 
-    __table_args__ = (
-        CheckConstraint(
-            "status IN ('PENDING', 'APPROVED', 'REJECTED')",
-            name="valid_status",
-        ),
-        Index(
-            "ix_project_approvals_project_status",
-            "project_id",
-            "status",
-        ),
+
+class ProjectApprovalCreate(BaseModel):
+    project_id: int = Field(gt=0)
+    request_comments: str | None = Field(
+        default=None,
+        max_length=5000,
     )
 
-    id: Mapped[int] = mapped_column(
-        primary_key=True,
-        index=True,
+    @field_validator("request_comments")
+    @classmethod
+    def validate_request_comments(
+        cls, value: str | None
+    ) -> str | None:
+        if value is not None:
+            value = value.strip()
+            if not value:
+                return None
+        return value
+
+
+class ProjectApprovalReview(BaseModel):
+    status: Literal["APPROVED", "REJECTED"]
+    review_comments: str | None = Field(
+        default=None,
+        max_length=5000,
     )
 
-    project_id: Mapped[int] = mapped_column(
-        ForeignKey("projects.id", ondelete="CASCADE"),
-        nullable=False,
-        index=True,
-    )
+    @field_validator("review_comments")
+    @classmethod
+    def validate_review_comments(
+        cls, value: str | None
+    ) -> str | None:
+        if value is not None:
+            value = value.strip()
+            if not value:
+                return None
+        return value
 
-    requested_by: Mapped[int] = mapped_column(
-        ForeignKey("users.id", ondelete="RESTRICT"),
-        nullable=False,
-        index=True,
-    )
 
-    reviewed_by: Mapped[int | None] = mapped_column(
-        ForeignKey("users.id", ondelete="SET NULL"),
-        nullable=True,
-        index=True,
-    )
+class ProjectApprovalResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
 
-    status: Mapped[str] = mapped_column(
-        String(20),
-        nullable=False,
-        default="PENDING",
-        index=True,
-    )
+    id: int
+    project_id: int
+    requested_by: int
+    reviewed_by: int | None
+    status: ApprovalStatus
+    request_comments: str | None
+    review_comments: str | None
+    submitted_at: datetime
+    reviewed_at: datetime | None
+    created_at: datetime
+    updated_at: datetime
 
-    request_comments: Mapped[str | None] = mapped_column(
-        Text,
-        nullable=True,
-    )
 
-    review_comments: Mapped[str | None] = mapped_column(
-        Text,
-        nullable=True,
-    )
-
-    submitted_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True),
-        nullable=False,
-        default=lambda: datetime.now(timezone.utc),
-    )
-
-    reviewed_at: Mapped[datetime | None] = mapped_column(
-        DateTime(timezone=True),
-        nullable=True,
-    )
-
-    created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True),
-        nullable=False,
-        default=lambda: datetime.now(timezone.utc),
-    )
-
-    updated_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True),
-        nullable=False,
-        default=lambda: datetime.now(timezone.utc),
-        onupdate=lambda: datetime.now(timezone.utc),
-    )
+class ProjectApprovalListResponse(BaseModel):
+    items: list[ProjectApprovalResponse]
+    total: int
+    page: int
+    page_size: int

@@ -1,143 +1,142 @@
 
-from datetime import date, datetime, timezone
+from datetime import date, datetime
 from decimal import Decimal
+from typing import Literal
 
-from sqlalchemy import (
-    CheckConstraint,
-    Date,
-    DateTime,
-    ForeignKey,
-    Index,
-    Numeric,
-    String,
-    Text,
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    field_validator,
+    model_validator,
 )
-from sqlalchemy.orm import Mapped, mapped_column
-
-from db.base import Base
 
 
-class Expense(Base):
-    __tablename__ = "expenses"
+ExpenseStatus = Literal[
+    "SUBMITTED",
+    "APPROVED",
+    "REJECTED",
+    "REIMBURSED",
+]
 
-    __table_args__ = (
-        CheckConstraint(
-            "amount > 0",
-            name="positive_amount",
-        ),
-        CheckConstraint(
-            "status IN ('SUBMITTED', 'APPROVED', 'REJECTED', 'REIMBURSED')",
-            name="valid_status",
-        ),
-        Index(
-            "ix_expenses_project_status",
-            "project_id",
-            "status",
-        ),
-        Index(
-            "ix_expenses_category_date",
-            "category",
-            "expense_date",
-        ),
-    )
+ExpenseCategory = Literal[
+    "TRAVEL",
+    "FOOD",
+    "SUPPLIES",
+    "EQUIPMENT",
+    "TRANSPORT",
+    "ACCOMMODATION",
+    "UTILITIES",
+    "MEDICAL",
+    "EDUCATION",
+    "ADMINISTRATION",
+    "OTHER",
+]
 
-    id: Mapped[int] = mapped_column(
-        primary_key=True,
-        index=True,
-    )
 
-    project_id: Mapped[int] = mapped_column(
-        ForeignKey("projects.id", ondelete="RESTRICT"),
-        nullable=False,
-        index=True,
-    )
+class ExpenseCreate(BaseModel):
+    project_id: int = Field(gt=0)
+    category: ExpenseCategory
+    amount: Decimal = Field(gt=0, max_digits=12, decimal_places=2)
+    currency: str = Field(default="INR", min_length=3, max_length=3)
+    expense_date: date
+    receipt_reference: str | None = Field(default=None, max_length=255)
+    attachment_url: str | None = Field(default=None, max_length=2048)
+    description: str = Field(min_length=3, max_length=5000)
 
-    submitted_by: Mapped[int] = mapped_column(
-        ForeignKey("users.id", ondelete="RESTRICT"),
-        nullable=False,
-        index=True,
-    )
+    @field_validator("currency")
+    @classmethod
+    def validate_currency(cls, value: str) -> str:
+        value = value.strip().upper()
+        if not value.isalpha():
+            raise ValueError("Currency must contain three alphabetic characters.")
+        return value
 
-    reviewed_by: Mapped[int | None] = mapped_column(
-        ForeignKey("users.id", ondelete="SET NULL"),
-        nullable=True,
-        index=True,
-    )
+    @field_validator("category")
+    @classmethod
+    def normalize_category(cls, value: str) -> str:
+        return value.upper()
 
-    category: Mapped[str] = mapped_column(
-        String(50),
-        nullable=False,
-        index=True,
-    )
+    @field_validator("receipt_reference", "description")
+    @classmethod
+    def strip_text(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        value = value.strip()
+        if not value:
+            raise ValueError("This field cannot be blank.")
+        return value
 
-    amount: Mapped[Decimal] = mapped_column(
-        Numeric(12, 2),
-        nullable=False,
-    )
+    @field_validator("attachment_url")
+    @classmethod
+    def validate_attachment_url(cls, value: str | None) -> str | None:
+        if value is not None:
+            value = value.strip()
+            if not value:
+                return None
+            if not value.startswith(("https://", "http://")):
+                raise ValueError("Attachment URL must use HTTP or HTTPS.")
+        return value
 
-    currency: Mapped[str] = mapped_column(
-        String(3),
-        nullable=False,
-        default="INR",
-    )
+    @model_validator(mode="after")
+    def validate_receipt_details(self):
+        if not self.receipt_reference and not self.attachment_url:
+            raise ValueError(
+                "Provide a receipt reference or an attachment URL."
+            )
+        return self
 
-    expense_date: Mapped[date] = mapped_column(
-        Date,
-        nullable=False,
-    )
 
-    receipt_reference: Mapped[str | None] = mapped_column(
-        String(255),
-        nullable=True,
-    )
+class ExpenseReview(BaseModel):
+    status: Literal["APPROVED", "REJECTED"]
+    review_comments: str | None = Field(default=None, max_length=5000)
 
-    attachment_url: Mapped[str | None] = mapped_column(
-        String(2048),
-        nullable=True,
-    )
+    @field_validator("review_comments")
+    @classmethod
+    def normalize_comments(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        value = value.strip()
+        return value or None
 
-    description: Mapped[str] = mapped_column(
-        Text,
-        nullable=False,
-    )
 
-    status: Mapped[str] = mapped_column(
-        String(20),
-        nullable=False,
-        default="SUBMITTED",
-        index=True,
-    )
+class ExpenseReimbursement(BaseModel):
+    review_comments: str | None = Field(default=None, max_length=5000)
 
-    review_comments: Mapped[str | None] = mapped_column(
-        Text,
-        nullable=True,
-    )
+    @field_validator("review_comments")
+    @classmethod
+    def normalize_comments(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        value = value.strip()
+        return value or None
 
-    submitted_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True),
-        nullable=False,
-        default=lambda: datetime.now(timezone.utc),
-    )
 
-    reviewed_at: Mapped[datetime | None] = mapped_column(
-        DateTime(timezone=True),
-        nullable=True,
-    )
+class ExpenseResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
 
-    reimbursed_at: Mapped[datetime | None] = mapped_column(
-        DateTime(timezone=True),
-        nullable=True,
-    )
+    id: int
+    project_id: int
+    submitted_by: int
+    reviewed_by: int | None
+    category: str
+    amount: Decimal
+    currency: str
+    expense_date: date
+    receipt_reference: str | None
+    attachment_url: str | None
+    description: str
+    status: ExpenseStatus
+    review_comments: str | None
+    submitted_at: datetime
+    reviewed_at: datetime | None
+    reimbursed_at: datetime | None
+    created_at: datetime
+    updated_at: datetime
 
-    created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True),
-        nullable=False,
-        default=lambda: datetime.now(timezone.utc),
-    )
 
-    updated_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True),
-        nullable=False,
-        default=lambda: datetime.now(timezone.utc),
-        onupdate=lambda: datetime.now(timezone.utc),
-    )
+class ExpenseListResponse(BaseModel):
+    items: list[ExpenseResponse]
+    total: int
+    page: int
+    page_size: int

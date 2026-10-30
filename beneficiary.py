@@ -1,117 +1,184 @@
 
-from datetime import date, datetime, timezone
+from datetime import date, datetime
+from typing import Literal
 
-from sqlalchemy import (
-    CheckConstraint,
-    Date,
-    DateTime,
-    ForeignKey,
-    Index,
-    String,
-    Text,
-)
-from sqlalchemy.orm import Mapped, mapped_column
-
-from db.base import Base
+from pydantic import BaseModel, ConfigDict, Field, EmailStr, field_validator
 
 
-class Beneficiary(Base):
-    __tablename__ = "beneficiaries"
+BeneficiaryCategory = Literal[
+    "CHILDREN",
+    "FAMILIES",
+    "ELDERLY",
+    "MEDICAL_ASSISTANCE",
+    "DISABILITY_SUPPORT",
+    "OTHER",
+]
 
-    __table_args__ = (
-        CheckConstraint(
-            "category IN ('CHILDREN', 'FAMILIES', 'ELDERLY', "
-            "'MEDICAL_ASSISTANCE', 'DISABILITY_SUPPORT', 'OTHER')",
-            name="valid_beneficiary_category",
-        ),
-        CheckConstraint(
-            "status IN ('ACTIVE', 'INACTIVE')",
-            name="valid_beneficiary_status",
-        ),
-        Index(
-            "ix_beneficiaries_name_category",
-            "full_name",
-            "category",
-        ),
-    )
+BeneficiaryStatus = Literal["ACTIVE", "INACTIVE"]
 
-    id: Mapped[int] = mapped_column(
-        primary_key=True,
-        index=True,
-    )
 
-    full_name: Mapped[str] = mapped_column(
-        String(150),
-        nullable=False,
-        index=True,
-    )
+class BeneficiaryCreate(BaseModel):
+    full_name: str = Field(min_length=2, max_length=150)
+    category: BeneficiaryCategory
+    date_of_birth: date | None = None
+    gender: str | None = Field(default=None, max_length=30)
+    phone: str | None = Field(default=None, max_length=30)
+    email: EmailStr | None = None
+    address: str | None = None
+    city: str | None = Field(default=None, max_length=100)
+    notes: str | None = None
 
-    category: Mapped[str] = mapped_column(
-        String(40),
-        nullable=False,
-        index=True,
-    )
+    @field_validator("full_name")
+    @classmethod
+    def validate_full_name(cls, value: str) -> str:
+        value = value.strip()
+        if len(value) < 2:
+            raise ValueError("Full name must contain at least 2 characters")
+        return value
 
-    date_of_birth: Mapped[date | None] = mapped_column(
-        Date,
-        nullable=True,
-    )
+    @field_validator("date_of_birth")
+    @classmethod
+    def validate_date_of_birth(cls, value: date | None) -> date | None:
+        if value is not None and value > date.today():
+            raise ValueError("Date of birth cannot be in the future")
+        return value
 
-    gender: Mapped[str | None] = mapped_column(
-        String(30),
-        nullable=True,
-    )
+    @field_validator("gender", "phone", "address", "city", "notes")
+    @classmethod
+    def strip_optional_strings(cls, value: str | None) -> str | None:
+        if value is not None:
+            value = value.strip()
+            return value or None
+        return value
 
-    phone: Mapped[str | None] = mapped_column(
-        String(30),
-        nullable=True,
-        index=True,
-    )
 
-    email: Mapped[str | None] = mapped_column(
-        String(255),
-        nullable=True,
-        index=True,
-    )
+class BeneficiaryUpdate(BaseModel):
+    full_name: str | None = Field(default=None, min_length=2, max_length=150)
+    category: BeneficiaryCategory | None = None
+    date_of_birth: date | None = None
+    gender: str | None = Field(default=None, max_length=30)
+    phone: str | None = Field(default=None, max_length=30)
+    email: EmailStr | None = None
+    address: str | None = None
+    city: str | None = Field(default=None, max_length=100)
+    notes: str | None = None
+    status: BeneficiaryStatus | None = None
 
-    address: Mapped[str | None] = mapped_column(
-        Text,
-        nullable=True,
-    )
+    @field_validator("full_name")
+    @classmethod
+    def validate_full_name(cls, value: str | None) -> str | None:
+        if value is not None:
+            value = value.strip()
+            if len(value) < 2:
+                raise ValueError("Full name must contain at least 2 characters")
+        return value
 
-    city: Mapped[str | None] = mapped_column(
-        String(100),
-        nullable=True,
-        index=True,
-    )
+    @field_validator("date_of_birth")
+    @classmethod
+    def validate_date_of_birth(cls, value: date | None) -> date | None:
+        if value is not None and value > date.today():
+            raise ValueError("Date of birth cannot be in the future")
+        return value
 
-    notes: Mapped[str | None] = mapped_column(
-        Text,
-        nullable=True,
-    )
+    @field_validator("gender", "phone", "address", "city", "notes")
+    @classmethod
+    def strip_optional_strings(cls, value: str | None) -> str | None:
+        if value is not None:
+            value = value.strip()
+            return value or None
+        return value
 
-    status: Mapped[str] = mapped_column(
-        String(20),
-        nullable=False,
-        default="ACTIVE",
-        index=True,
-    )
 
-    created_by: Mapped[int] = mapped_column(
-        ForeignKey("users.id", ondelete="RESTRICT"),
-        nullable=False,
-        index=True,
-    )
+class BeneficiaryResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
 
-    created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True),
-        nullable=False,
-        default=lambda: datetime.now(timezone.utc),
-    )
+    id: int
+    full_name: str
+    category: BeneficiaryCategory
+    date_of_birth: date | None
+    gender: str | None
+    phone: str | None
+    email: str | None
+    address: str | None
+    city: str | None
+    notes: str | None
+    status: BeneficiaryStatus
+    created_by: int
+    created_at: datetime
+    updated_at: datetime
 
-    updated_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True),
-        nullable=False,
-        default=lambda: datetime.now(timezone.utc),
-        onupdate=lambda: datetime.now(timezone.utc),
-    )
+
+class BeneficiaryListResponse(BaseModel):
+    items: list[BeneficiaryResponse]
+    total: int
+    page: int
+    page_size: int
+
+
+class BeneficiaryStatusUpdate(BaseModel):
+    status: BeneficiaryStatus
+
+
+class BeneficiaryProjectCreate(BaseModel):
+    project_id: int = Field(gt=0)
+    notes: str | None = None
+
+
+class BeneficiaryProjectResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    beneficiary_id: int
+    project_id: int
+    notes: str | None
+    linked_by: int
+    created_at: datetime
+
+
+class BeneficiaryProjectListResponse(BaseModel):
+    items: list[BeneficiaryProjectResponse]
+    total: int
+    page: int
+    page_size: int
+
+
+class AssistanceCreate(BaseModel):
+    beneficiary_id: int = Field(gt=0)
+    project_id: int | None = Field(default=None, gt=0)
+    resource_id: int | None = Field(default=None, gt=0)
+    assistance_type: str = Field(min_length=2, max_length=100)
+    description: str | None = None
+    quantity: int = Field(default=1, gt=0)
+    distribution_date: date
+    notes: str | None = None
+
+    @field_validator("assistance_type")
+    @classmethod
+    def validate_assistance_type(cls, value: str) -> str:
+        value = value.strip()
+        if len(value) < 2:
+            raise ValueError("Assistance type must contain at least 2 characters")
+        return value
+
+
+class AssistanceResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    beneficiary_id: int
+    project_id: int | None
+    resource_id: int | None
+    assistance_type: str
+    description: str | None
+    quantity: int
+    distribution_date: date
+    notes: str | None
+    recorded_by: int
+    created_at: datetime
+
+
+class AssistanceListResponse(BaseModel):
+    items: list[AssistanceResponse]
+    total: int
+    page: int
+    page_size: int

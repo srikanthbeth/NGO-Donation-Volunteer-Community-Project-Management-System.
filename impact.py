@@ -1,70 +1,84 @@
 
+from datetime import datetime
+from decimal import Decimal
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, Query, status
-from sqlalchemy.orm import Session
-
-from db.session import get_db
-from models.user import User
-from routes.dependencies import get_current_user
-from schemas.impact import (
-    ImpactSummaryResponse,
-    ImpactUpdateCreate,
-    ImpactUpdateListResponse,
-    ImpactUpdateResponse,
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    StringConstraints,
+    field_serializer,
 )
-from services.impact_service import ImpactService
 
 
-router = APIRouter(prefix="/api/v1/impact", tags=["Impact Tracking"])
+ImpactNotes = Annotated[
+    str,
+    StringConstraints(
+        strip_whitespace=True,
+        min_length=1,
+        max_length=5000,
+    ),
+]
 
 
-@router.post(
-    "/projects/{project_id}/updates",
-    response_model=ImpactUpdateResponse,
-    status_code=status.HTTP_201_CREATED,
-)
-def submit_impact_update(
-    project_id: int,
-    payload: ImpactUpdateCreate,
-    db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
-):
-    return ImpactService(db).create_update(project_id, payload, current_user)
-
-
-@router.get(
-    "/projects/{project_id}/history",
-    response_model=ImpactUpdateListResponse,
-)
-def get_impact_history(
-    project_id: int,
-    page: Annotated[int, Query(ge=1)] = 1,
-    page_size: Annotated[int, Query(ge=1, le=100)] = 10,
-    db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
-):
-    items, total = ImpactService(db).list_updates(
-        project_id,
-        current_user,
-        page,
-        page_size,
+class ImpactUpdateCreate(BaseModel):
+    beneficiaries_served: int = Field(default=0, ge=0)
+    volunteer_hours: Decimal = Field(
+        default=Decimal("0.00"),
+        ge=0,
+        max_digits=12,
+        decimal_places=2,
     )
-    return {
-        "items": items,
-        "total": total,
-        "page": page,
-        "page_size": page_size,
-    }
+    resources_distributed: int = Field(default=0, ge=0)
+    projects_completed: int = Field(default=0, ge=0)
+    funds_utilized: Decimal = Field(
+        default=Decimal("0.00"),
+        ge=0,
+        max_digits=14,
+        decimal_places=2,
+    )
+    milestones_achieved: int = Field(default=0, ge=0)
+    notes: str | None = Field(default=None, max_length=5000)
 
 
-@router.get(
-    "/projects/{project_id}/summary",
-    response_model=ImpactSummaryResponse,
-)
-def get_impact_summary(
-    project_id: int,
-    db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
-):
-    return ImpactService(db).get_summary(project_id, current_user)
+class ImpactUpdateResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    project_id: int
+    beneficiaries_served: int
+    volunteer_hours: Decimal
+    resources_distributed: int
+    projects_completed: int
+    funds_utilized: Decimal
+    milestones_achieved: int
+    notes: str | None
+    submitted_by: int
+    created_at: datetime
+
+    @field_serializer("volunteer_hours", "funds_utilized", when_used="json")
+    def serialize_decimal_metrics(self, value: Decimal) -> str:
+        return format(value, ".2f")
+
+
+class ImpactUpdateListResponse(BaseModel):
+    items: list[ImpactUpdateResponse]
+    total: int
+    page: int
+    page_size: int
+
+
+class ImpactSummaryResponse(BaseModel):
+    project_id: int
+    update_count: int
+    beneficiaries_served: int
+    volunteer_hours: Decimal
+    resources_distributed: int
+    projects_completed: int
+    funds_utilized: Decimal
+    milestones_achieved: int
+
+    @field_serializer("volunteer_hours", "funds_utilized", when_used="json")
+    def serialize_decimal_metrics(self, value: Decimal) -> str:
+        return format(value, ".2f")

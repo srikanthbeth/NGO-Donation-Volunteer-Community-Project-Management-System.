@@ -1,105 +1,148 @@
 
-from datetime import datetime, timezone
+from datetime import datetime
 from decimal import Decimal
+from typing import Literal
 
-from sqlalchemy import (
-    CheckConstraint,
-    DateTime,
-    ForeignKey,
-    Index,
-    Numeric,
-    String,
-    Text,
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    field_validator,
+    model_validator,
 )
-from sqlalchemy.orm import Mapped, mapped_column
-
-from db.base import Base
 
 
-class Project(Base):
-    __tablename__ = "projects"
+ProjectStatus = Literal[
+    "DRAFT",
+    "PLANNED",
+    "ACTIVE",
+    "ON_HOLD",
+    "COMPLETED",
+    "CANCELLED",
+]
 
-    __table_args__ = (
-        CheckConstraint(
-            "budget >= 0",
-            name="budget_nonnegative",
-        ),
-        CheckConstraint(
-            "end_date IS NULL OR end_date >= start_date",
-            name="end_after_start",
-        ),
-        CheckConstraint(
-            "status IN ('DRAFT', 'PLANNED', 'ACTIVE', "
-            "'ON_HOLD', 'COMPLETED', 'CANCELLED')",
-            name="valid_status",
-        ),
-        Index("ix_projects_status_start_date", "status", "start_date"),
-    )
 
-    id: Mapped[int] = mapped_column(
-        primary_key=True,
-        index=True,
-    )
-
-    title: Mapped[str] = mapped_column(
-        String(200),
-        nullable=False,
-        index=True,
-    )
-
-    description: Mapped[str] = mapped_column(
-        Text,
-        nullable=False,
-    )
-
-    location: Mapped[str | None] = mapped_column(
-        String(250),
-        nullable=True,
-    )
-
-    start_date: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True),
-        nullable=False,
-    )
-
-    end_date: Mapped[datetime | None] = mapped_column(
-        DateTime(timezone=True),
-        nullable=True,
-    )
-
-    budget: Mapped[Decimal] = mapped_column(
-        Numeric(12, 2),
-        nullable=False,
+class ProjectCreate(BaseModel):
+    title: str = Field(min_length=1, max_length=200)
+    description: str = Field(min_length=1, max_length=10000)
+    location: str | None = Field(default=None, max_length=250)
+    start_date: datetime
+    end_date: datetime | None = None
+    budget: Decimal = Field(
         default=Decimal("0.00"),
+        ge=0,
+        max_digits=12,
+        decimal_places=2,
     )
+    currency: str = Field(default="INR", min_length=3, max_length=3)
+    status: ProjectStatus = "DRAFT"
 
-    currency: Mapped[str] = mapped_column(
-        String(3),
-        nullable=False,
-        default="INR",
-    )
+    @field_validator("title", "description")
+    @classmethod
+    def validate_nonblank(cls, value: str) -> str:
+        value = value.strip()
+        if not value:
+            raise ValueError("This field must not be blank.")
+        return value
 
-    status: Mapped[str] = mapped_column(
-        String(20),
-        nullable=False,
-        default="DRAFT",
-    )
+    @field_validator("location")
+    @classmethod
+    def normalize_location(cls, value: str | None) -> str | None:
+        if value is not None:
+            value = value.strip()
+            return value or None
+        return value
 
-    created_by: Mapped[int] = mapped_column(
-        ForeignKey("users.id", ondelete="RESTRICT"),
-        nullable=False,
-        index=True,
-    )
+    @field_validator("currency")
+    @classmethod
+    def normalize_currency(cls, value: str) -> str:
+        value = value.strip().upper()
+        if len(value) != 3 or not value.isalpha():
+            raise ValueError("Currency must be a three-letter code.")
+        return value
 
-    created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True),
-        nullable=False,
-        default=lambda: datetime.now(timezone.utc),
-    )
+    @model_validator(mode="after")
+    def validate_dates(self):
+        if self.end_date is not None and self.end_date < self.start_date:
+            raise ValueError("end_date must be on or after start_date.")
+        return self
 
-    updated_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True),
-        nullable=False,
-        default=lambda: datetime.now(timezone.utc),
-        onupdate=lambda: datetime.now(timezone.utc),
+
+class ProjectUpdate(BaseModel):
+    title: str | None = Field(default=None, min_length=1, max_length=200)
+    description: str | None = Field(default=None, min_length=1, max_length=10000)
+    location: str | None = Field(default=None, max_length=250)
+    start_date: datetime | None = None
+    end_date: datetime | None = None
+    budget: Decimal | None = Field(
+        default=None,
+        ge=0,
+        max_digits=12,
+        decimal_places=2,
     )
+    currency: str | None = Field(default=None, min_length=3, max_length=3)
+    status: ProjectStatus | None = None
+
+    @field_validator("title", "description")
+    @classmethod
+    def validate_nonblank(cls, value: str | None) -> str | None:
+        if value is not None:
+            value = value.strip()
+            if not value:
+                raise ValueError("This field must not be blank.")
+        return value
+
+    @field_validator("location")
+    @classmethod
+    def normalize_location(cls, value: str | None) -> str | None:
+        if value is not None:
+            value = value.strip()
+            return value or None
+        return value
+
+    @field_validator("currency")
+    @classmethod
+    def normalize_currency(cls, value: str | None) -> str | None:
+        if value is None:
+            return value
+
+        value = value.strip().upper()
+        if len(value) != 3 or not value.isalpha():
+            raise ValueError("Currency must be a three-letter code.")
+        return value
+
+    @model_validator(mode="after")
+    def validate_dates(self):
+        # Check the date range when both dates are supplied.
+        # The service validates the combined dates against the existing record.
+        if (
+            self.start_date is not None
+            and self.end_date is not None
+            and self.end_date < self.start_date
+        ):
+            raise ValueError("end_date must be on or after start_date.")
+        return self
+
+
+class ProjectResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    title: str
+    description: str
+    location: str | None
+    start_date: datetime
+    end_date: datetime | None
+    budget: Decimal
+    currency: str
+    status: ProjectStatus
+    created_by: int
+    created_at: datetime
+    updated_at: datetime
+
+
+class ProjectListResponse(BaseModel):
+    items: list[ProjectResponse]
+    total: int
+    page: int
+    page_size: int

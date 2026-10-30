@@ -1,112 +1,109 @@
 
-from datetime import datetime, timezone
+from datetime import datetime
+from decimal import Decimal
+from typing import Literal
 
-from sqlalchemy import (
-    CheckConstraint,
-    DateTime,
-    ForeignKey,
-    Index,
-    Numeric,
-    String,
-    Text,
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    field_validator,
+    model_validator,
 )
-from sqlalchemy.orm import Mapped, mapped_column
 
-from db.base import Base
+CampaignStatus = Literal[
+    "DRAFT",
+    "ACTIVE",
+    "PAUSED",
+    "COMPLETED",
+    "CANCELLED",
+]
 
 
-class Campaign(Base):
-    __tablename__ = "campaigns"
+class CampaignCreate(BaseModel):
+    title: str = Field(min_length=3, max_length=200)
+    description: str = Field(min_length=10)
+    goal_amount: Decimal = Field(gt=0, max_digits=12, decimal_places=2)
+    currency: str = Field(default="INR", min_length=3, max_length=3)
+    start_date: datetime
+    end_date: datetime
+    status: CampaignStatus = "DRAFT"
 
-    __table_args__ = (
-        CheckConstraint(
-            "goal_amount > 0",
-            name="ck_campaigns_goal_amount_positive",
-        ),
-        CheckConstraint(
-            "raised_amount >= 0",
-            name="ck_campaigns_raised_amount_nonnegative",
-        ),
-        CheckConstraint(
-            "raised_amount <= goal_amount",
-            name="ck_campaigns_raised_not_over_goal",
-        ),
-        CheckConstraint(
-            "status IN ('DRAFT', 'ACTIVE', 'PAUSED', 'COMPLETED', 'CANCELLED')",
-            name="ck_campaigns_status",
-        ),
-        CheckConstraint(
-            "end_date > start_date",
-            name="ck_campaigns_end_after_start",
-        ),
-        Index("ix_campaigns_status", "status"),
-        Index("ix_campaigns_start_end", "start_date", "end_date"),
+    @field_validator("title", "description")
+    @classmethod
+    def strip_required_text(cls, value: str) -> str:
+        value = value.strip()
+        if not value:
+            raise ValueError("This field cannot be empty")
+        return value
+
+    @field_validator("currency")
+    @classmethod
+    def uppercase_currency(cls, value: str) -> str:
+        value = value.strip().upper()
+        if len(value) != 3 or not value.isalpha():
+            raise ValueError("Currency must be a three-letter code")
+        return value
+
+    @model_validator(mode="after")
+    def validate_dates(self):
+        if self.end_date <= self.start_date:
+            raise ValueError("end_date must be after start_date")
+        return self
+
+
+class CampaignUpdate(BaseModel):
+    title: str | None = Field(default=None, min_length=3, max_length=200)
+    description: str | None = Field(default=None, min_length=10)
+    goal_amount: Decimal | None = Field(
+        default=None, gt=0, max_digits=12, decimal_places=2
     )
+    currency: str | None = Field(default=None, min_length=3, max_length=3)
+    start_date: datetime | None = None
+    end_date: datetime | None = None
+    status: CampaignStatus | None = None
 
-    id: Mapped[int] = mapped_column(
-        primary_key=True,
-        index=True,
-    )
+    @field_validator("title", "description")
+    @classmethod
+    def strip_optional_text(cls, value):
+        if value is None:
+            return None
+        value = value.strip()
+        if not value:
+            raise ValueError("This field cannot be empty")
+        return value
 
-    title: Mapped[str] = mapped_column(
-        String(200),
-        nullable=False,
-        index=True,
-    )
+    @field_validator("currency")
+    @classmethod
+    def uppercase_currency(cls, value):
+        if value is None:
+            return None
+        value = value.strip().upper()
+        if len(value) != 3 or not value.isalpha():
+            raise ValueError("Currency must be a three-letter code")
+        return value
 
-    description: Mapped[str] = mapped_column(
-        Text,
-        nullable=False,
-    )
 
-    goal_amount: Mapped[float] = mapped_column(
-        Numeric(12, 2),
-        nullable=False,
-    )
+class CampaignResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
 
-    raised_amount: Mapped[float] = mapped_column(
-        Numeric(12, 2),
-        nullable=False,
-        default=0,
-    )
+    id: int
+    title: str
+    description: str
+    goal_amount: Decimal
+    raised_amount: Decimal
+    currency: str
+    start_date: datetime
+    end_date: datetime
+    status: CampaignStatus
+    created_by: int
+    created_at: datetime
+    updated_at: datetime
 
-    currency: Mapped[str] = mapped_column(
-        String(3),
-        nullable=False,
-        default="INR",
-    )
 
-    start_date: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True),
-        nullable=False,
-    )
-
-    end_date: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True),
-        nullable=False,
-    )
-
-    status: Mapped[str] = mapped_column(
-        String(20),
-        nullable=False,
-        default="DRAFT",
-    )
-
-    created_by: Mapped[int] = mapped_column(
-        ForeignKey("users.id", ondelete="RESTRICT"),
-        nullable=False,
-        index=True,
-    )
-
-    created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True),
-        nullable=False,
-        default=lambda: datetime.now(timezone.utc),
-    )
-
-    updated_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True),
-        nullable=False,
-        default=lambda: datetime.now(timezone.utc),
-        onupdate=lambda: datetime.now(timezone.utc),
-    )
+class CampaignListResponse(BaseModel):
+    items: list[CampaignResponse]
+    total: int
+    page: int
+    page_size: int
+    pages: int

@@ -1,116 +1,113 @@
 
-from fastapi import APIRouter, Depends, status
-from sqlalchemy.orm import Session
+from datetime import datetime
+from typing import Literal
 
-from db.session import get_db
-from models.user import User
-from routes.dependencies import get_current_user
-from schemas.auth import (
-    LogoutRequest,
-    PasswordResetConfirm,
-    PasswordResetRequest,
-    RefreshTokenRequest,
-    TokenResponse,
-    UserLogin,
-    UserRegister,
-    UserResponse,
-)
-from services.auth_service import AuthService
+from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator
+
+from models.user import UserRole
 
 
-router = APIRouter(
-    prefix="/auth",
-    tags=["Authentication"],
-)
+class UserRegister(BaseModel):
+    full_name: str = Field(min_length=2, max_length=150)
+    email: EmailStr
+    password: str = Field(min_length=12, max_length=128)
+
+    @field_validator("full_name")
+    @classmethod
+    def validate_full_name(cls, value: str) -> str:
+        value = " ".join(value.split())
+
+        if len(value) < 2:
+            raise ValueError("Full name must contain at least 2 characters.")
+
+        return value
+
+    @field_validator("password")
+    @classmethod
+    def validate_password(cls, value: str) -> str:
+        if not any(char.islower() for char in value):
+            raise ValueError("Password must contain a lowercase letter.")
+
+        if not any(char.isupper() for char in value):
+            raise ValueError("Password must contain an uppercase letter.")
+
+        if not any(char.isdigit() for char in value):
+            raise ValueError("Password must contain a number.")
+
+        if not any(not char.isalnum() for char in value):
+            raise ValueError("Password must contain a special character.")
+
+        return value
 
 
-@router.post(
-    "/register",
-    response_model=UserResponse,
-    status_code=status.HTTP_201_CREATED,
-)
-def register(
-    data: UserRegister,
-    db: Session = Depends(get_db),
-):
-    """Register a new donor account."""
-    return AuthService(db).register(data)
+class UserLogin(BaseModel):
+    email: EmailStr
+    password: str = Field(min_length=1, max_length=128)
 
 
-@router.post(
-    "/login",
-    response_model=TokenResponse,
-    status_code=status.HTTP_200_OK,
-)
-def login(
-    data: UserLogin,
-    db: Session = Depends(get_db),
-):
-    """Authenticate with email and password."""
-    return AuthService(db).login(
-        email=str(data.email),
-        password=data.password,
-    )
+class RefreshTokenRequest(BaseModel):
+    refresh_token: str = Field(min_length=20, max_length=4096)
 
 
-@router.post(
-    "/refresh",
-    response_model=TokenResponse,
-    status_code=status.HTTP_200_OK,
-)
-def refresh_token(
-    data: RefreshTokenRequest,
-    db: Session = Depends(get_db),
-):
-    """Rotate a refresh token and issue new tokens."""
-    return AuthService(db).refresh(data.refresh_token)
+class LogoutRequest(BaseModel):
+    refresh_token: str = Field(min_length=20, max_length=4096)
 
 
-@router.post(
-    "/logout",
-    status_code=status.HTTP_200_OK,
-)
-def logout(
-    data: LogoutRequest,
-    db: Session = Depends(get_db),
-):
-    """Revoke a refresh token."""
-    return AuthService(db).logout(data.refresh_token)
+class TokenResponse(BaseModel):
+    access_token: str
+    refresh_token: str
+    token_type: Literal["bearer"] = "bearer"
+    expires_in: int
 
 
-@router.get(
-    "/me",
-    response_model=UserResponse,
-)
-def get_me(
-    current_user: User = Depends(get_current_user),
-):
-    """Return the authenticated user's profile."""
-    return current_user
+class UserResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    full_name: str
+    email: EmailStr
+    role: str
+    is_active: bool
+    is_verified: bool
+    created_at: datetime
+    updated_at: datetime
 
 
-@router.post(
-    "/password-reset/request",
-    status_code=status.HTTP_200_OK,
-)
-def request_password_reset(
-    data: PasswordResetRequest,
-    db: Session = Depends(get_db),
-):
-    """Request a password reset without revealing account existence."""
-    return AuthService(db).request_password_reset(str(data.email))
+class PasswordResetRequest(BaseModel):
+    email: EmailStr
 
 
-@router.post(
-    "/password-reset/confirm",
-    status_code=status.HTTP_200_OK,
-)
-def confirm_password_reset(
-    data: PasswordResetConfirm,
-    db: Session = Depends(get_db),
-):
-    """Set a new password using a valid reset token."""
-    return AuthService(db).confirm_password_reset(
-        raw_token=data.token,
-        new_password=data.new_password,
-    )
+class PasswordResetConfirm(BaseModel):
+    token: str = Field(min_length=20, max_length=4096)
+    new_password: str = Field(min_length=12, max_length=128)
+
+    @field_validator("new_password")
+    @classmethod
+    def validate_new_password(cls, value: str) -> str:
+        if not any(char.islower() for char in value):
+            raise ValueError("Password must contain a lowercase letter.")
+
+        if not any(char.isupper() for char in value):
+            raise ValueError("Password must contain an uppercase letter.")
+
+        if not any(char.isdigit() for char in value):
+            raise ValueError("Password must contain a number.")
+
+        if not any(not char.isalnum() for char in value):
+            raise ValueError("Password must contain a special character.")
+
+        return value
+
+
+class AccountStatusUpdate(BaseModel):
+    is_active: bool
+
+
+class UserRoleUpdate(BaseModel):
+    role: Literal[
+        "NGO_MANAGER",
+        "FINANCE_OFFICER",
+        "VOLUNTEER_COORDINATOR",
+        "VOLUNTEER",
+        "DONOR",
+    ]

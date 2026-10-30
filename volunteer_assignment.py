@@ -1,107 +1,118 @@
 
 from datetime import date, datetime
-from typing import Optional
+from typing import Literal, Optional
 
-from sqlalchemy import (
-    CheckConstraint,
-    Date,
-    DateTime,
-    ForeignKey,
-    Integer,
-    String,
-    Text,
-    func,
-)
-from sqlalchemy.orm import Mapped, mapped_column
-
-from db.base import Base
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 
-class VolunteerAssignment(Base):
-    __tablename__ = "volunteer_assignments"
+AssignmentStatus = Literal[
+    "ASSIGNED",
+    "ACCEPTED",
+    "IN_PROGRESS",
+    "COMPLETED",
+    "CANCELLED",
+]
 
-    __table_args__ = (
-        CheckConstraint(
-            "status IN "
-            "('ASSIGNED', 'ACCEPTED', 'IN_PROGRESS', 'COMPLETED', 'CANCELLED')",
-            name="ck_volunteer_assignments_status",
-        ),
-        CheckConstraint(
-            "end_date IS NULL OR end_date >= start_date",
-            name="ck_volunteer_assignments_dates",
-        ),
-    )
 
-    id: Mapped[int] = mapped_column(
-        Integer,
-        primary_key=True,
-        index=True,
-    )
+class VolunteerAssignmentBase(BaseModel):
+    volunteer_id: int = Field(gt=0)
+    project_id: Optional[int] = Field(default=None, gt=0)
+    title: str = Field(min_length=3, max_length=200)
+    description: Optional[str] = Field(default=None, max_length=5000)
+    responsibilities: Optional[str] = Field(default=None, max_length=5000)
+    start_date: date
+    end_date: Optional[date] = None
+    hours_per_week: int = Field(default=0, ge=0, le=168)
 
-    volunteer_id: Mapped[int] = mapped_column(
-        ForeignKey("volunteers.id", ondelete="CASCADE"),
-        nullable=False,
-        index=True,
-    )
+    @field_validator("title")
+    @classmethod
+    def validate_title(cls, value: str) -> str:
+        value = value.strip()
+        if len(value) < 3:
+            raise ValueError("Title must contain at least 3 non-space characters.")
+        return value
 
-    project_id: Mapped[Optional[int]] = mapped_column(
-    ForeignKey("projects.id", ondelete="SET NULL"),
-    nullable=True,
-    index=True,
-)
+    @field_validator("description", "responsibilities")
+    @classmethod
+    def clean_optional_text(cls, value: Optional[str]) -> Optional[str]:
+        if value is None:
+            return None
+        value = value.strip()
+        return value or None
 
-    title: Mapped[str] = mapped_column(
-        String(200),
-        nullable=False,
-    )
+    @model_validator(mode="after")
+    def validate_dates(self):
+        if self.end_date is not None and self.end_date < self.start_date:
+            raise ValueError("End date cannot be earlier than start date.")
+        return self
 
-    description: Mapped[Optional[str]] = mapped_column(
-        Text,
-        nullable=True,
-    )
 
-    responsibilities: Mapped[Optional[str]] = mapped_column(
-        Text,
-        nullable=True,
-    )
+class VolunteerAssignmentCreate(VolunteerAssignmentBase):
+    pass
 
-    start_date: Mapped[date] = mapped_column(
-        Date,
-        nullable=False,
-    )
 
-    end_date: Mapped[Optional[date]] = mapped_column(
-        Date,
-        nullable=True,
-    )
+class VolunteerAssignmentUpdate(BaseModel):
+    project_id: Optional[int] = Field(default=None, gt=0)
+    title: Optional[str] = Field(default=None, min_length=3, max_length=200)
+    description: Optional[str] = Field(default=None, max_length=5000)
+    responsibilities: Optional[str] = Field(default=None, max_length=5000)
+    start_date: Optional[date] = None
+    end_date: Optional[date] = None
+    hours_per_week: Optional[int] = Field(default=None, ge=0, le=168)
 
-    hours_per_week: Mapped[int] = mapped_column(
-        Integer,
-        nullable=False,
-        default=0,
-    )
+    @field_validator("title")
+    @classmethod
+    def validate_optional_title(cls, value: Optional[str]) -> Optional[str]:
+        if value is None:
+            return None
+        value = value.strip()
+        if len(value) < 3:
+            raise ValueError("Title must contain at least 3 non-space characters.")
+        return value
 
-    status: Mapped[str] = mapped_column(
-        String(20),
-        nullable=False,
-        default="ASSIGNED",
-    )
+    @field_validator("description", "responsibilities")
+    @classmethod
+    def clean_optional_text(cls, value: Optional[str]) -> Optional[str]:
+        if value is None:
+            return None
+        value = value.strip()
+        return value or None
 
-    assigned_by: Mapped[int] = mapped_column(
-        ForeignKey("users.id", ondelete="RESTRICT"),
-        nullable=False,
-        index=True,
-    )
+    @model_validator(mode="after")
+    def validate_dates(self):
+        if (
+            self.start_date is not None
+            and self.end_date is not None
+            and self.end_date < self.start_date
+        ):
+            raise ValueError("End date cannot be earlier than start date.")
+        return self
 
-    created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True),
-        nullable=False,
-        server_default=func.now(),
-    )
 
-    updated_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True),
-        nullable=False,
-        server_default=func.now(),
-        onupdate=func.now(),
-    )
+class VolunteerAssignmentStatusUpdate(BaseModel):
+    status: AssignmentStatus
+
+
+class VolunteerAssignmentResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    volunteer_id: int
+    project_id: Optional[int]
+    title: str
+    description: Optional[str]
+    responsibilities: Optional[str]
+    start_date: date
+    end_date: Optional[date]
+    hours_per_week: int
+    status: AssignmentStatus
+    assigned_by: int
+    created_at: datetime
+    updated_at: datetime
+
+
+class VolunteerAssignmentListResponse(BaseModel):
+    items: list[VolunteerAssignmentResponse]
+    total: int
+    page: int
+    page_size: int

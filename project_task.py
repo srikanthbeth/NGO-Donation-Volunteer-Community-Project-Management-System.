@@ -1,109 +1,130 @@
 
-from datetime import datetime, timezone
+from datetime import datetime
+from typing import Literal
 
-from sqlalchemy import (
-    CheckConstraint,
-    DateTime,
-    ForeignKey,
-    Index,
-    String,
-    Text,
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    field_validator,
+    model_validator,
 )
-from sqlalchemy.orm import Mapped, mapped_column
 
-from db.base import Base
+TaskStatus = Literal[
+    "TODO",
+    "IN_PROGRESS",
+    "BLOCKED",
+    "COMPLETED",
+    "CANCELLED",
+]
+
+TaskPriority = Literal[
+    "LOW",
+    "MEDIUM",
+    "HIGH",
+    "URGENT",
+]
 
 
-class ProjectTask(Base):
-    __tablename__ = "project_tasks"
+class ProjectTaskCreate(BaseModel):
+    project_id: int = Field(gt=0)
+    milestone_id: int | None = Field(default=None, gt=0)
+    assigned_volunteer_id: int | None = Field(default=None, gt=0)
+    title: str = Field(min_length=1, max_length=200)
+    description: str | None = Field(default=None, max_length=10000)
+    priority: TaskPriority = "MEDIUM"
+    status: TaskStatus = "TODO"
+    start_date: datetime | None = None
+    due_date: datetime | None = None
 
-    __table_args__ = (
-        CheckConstraint(
-            "status IN "
-            "('TODO','IN_PROGRESS','BLOCKED','COMPLETED','CANCELLED')",
-            name="valid_status",
-        ),
-        CheckConstraint(
-            "priority IN ('LOW','MEDIUM','HIGH','URGENT')",
-            name="valid_priority",
-        ),
-        Index(
-            "ix_project_tasks_project_status",
-            "project_id",
-            "status",
-        ),
-        Index(
-            "ix_project_tasks_assigned_volunteer",
-            "assigned_volunteer_id",
-            "status",
-        ),
-    )
+    @field_validator("title")
+    @classmethod
+    def validate_title(cls, value: str) -> str:
+        value = value.strip()
+        if not value:
+            raise ValueError("Task title must not be blank.")
+        return value
 
-    id: Mapped[int] = mapped_column(primary_key=True, index=True)
+    @field_validator("description")
+    @classmethod
+    def validate_description(cls, value: str | None) -> str | None:
+        if value is not None:
+            value = value.strip()
+            if not value:
+                return None
+        return value
 
-    project_id: Mapped[int] = mapped_column(
-        ForeignKey("projects.id", ondelete="CASCADE"),
-        nullable=False,
-        index=True,
-    )
+    @model_validator(mode="after")
+    def validate_dates(self):
+        if (
+            self.start_date is not None
+            and self.due_date is not None
+            and self.due_date < self.start_date
+        ):
+            raise ValueError("due_date must be on or after start_date.")
+        return self
 
-    milestone_id: Mapped[int | None] = mapped_column(
-        ForeignKey("project_milestones.id", ondelete="SET NULL"),
-        nullable=True,
-        index=True,
-    )
 
-    assigned_volunteer_id: Mapped[int | None] = mapped_column(
-        ForeignKey("volunteers.id", ondelete="SET NULL"),
-        nullable=True,
-        index=True,
-    )
+class ProjectTaskUpdate(BaseModel):
+    milestone_id: int | None = Field(default=None, gt=0)
+    assigned_volunteer_id: int | None = Field(default=None, gt=0)
+    title: str | None = Field(default=None, min_length=1, max_length=200)
+    description: str | None = Field(default=None, max_length=10000)
+    priority: TaskPriority | None = None
+    status: TaskStatus | None = None
+    start_date: datetime | None = None
+    due_date: datetime | None = None
 
-    title: Mapped[str] = mapped_column(String(200), nullable=False)
-    description: Mapped[str | None] = mapped_column(Text, nullable=True)
+    @field_validator("title")
+    @classmethod
+    def validate_title(cls, value: str | None) -> str | None:
+        if value is not None:
+            value = value.strip()
+            if not value:
+                raise ValueError("Task title must not be blank.")
+        return value
 
-    priority: Mapped[str] = mapped_column(
-        String(20),
-        nullable=False,
-        default="MEDIUM",
-    )
+    @field_validator("description")
+    @classmethod
+    def validate_description(cls, value: str | None) -> str | None:
+        if value is not None:
+            value = value.strip()
+            if not value:
+                return None
+        return value
 
-    status: Mapped[str] = mapped_column(
-        String(20),
-        nullable=False,
-        default="TODO",
-    )
+    @model_validator(mode="after")
+    def validate_dates(self):
+        if (
+            self.start_date is not None
+            and self.due_date is not None
+            and self.due_date < self.start_date
+        ):
+            raise ValueError("due_date must be on or after start_date.")
+        return self
 
-    start_date: Mapped[datetime | None] = mapped_column(
-        DateTime(timezone=True),
-        nullable=True,
-    )
 
-    due_date: Mapped[datetime | None] = mapped_column(
-        DateTime(timezone=True),
-        nullable=True,
-    )
+class ProjectTaskResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
 
-    completed_at: Mapped[datetime | None] = mapped_column(
-        DateTime(timezone=True),
-        nullable=True,
-    )
+    id: int
+    project_id: int
+    milestone_id: int | None
+    assigned_volunteer_id: int | None
+    title: str
+    description: str | None
+    priority: TaskPriority
+    status: TaskStatus
+    start_date: datetime | None
+    due_date: datetime | None
+    completed_at: datetime | None
+    created_by: int
+    created_at: datetime
+    updated_at: datetime
 
-    created_by: Mapped[int] = mapped_column(
-        ForeignKey("users.id", ondelete="RESTRICT"),
-        nullable=False,
-        index=True,
-    )
 
-    created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True),
-        nullable=False,
-        default=lambda: datetime.now(timezone.utc),
-    )
-
-    updated_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True),
-        nullable=False,
-        default=lambda: datetime.now(timezone.utc),
-        onupdate=lambda: datetime.now(timezone.utc),
-    )
+class ProjectTaskListResponse(BaseModel):
+    items: list[ProjectTaskResponse]
+    total: int
+    page: int
+    page_size: int

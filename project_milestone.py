@@ -1,71 +1,89 @@
 
-from datetime import datetime, timezone
+from datetime import datetime
+from typing import Literal
 
-from sqlalchemy import (
-    CheckConstraint,
-    DateTime,
-    ForeignKey,
-    Index,
-    String,
-    Text,
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    field_validator,
+    model_validator,
 )
-from sqlalchemy.orm import Mapped, mapped_column
 
-from db.base import Base
+MilestoneStatus = Literal[
+    "PENDING",
+    "IN_PROGRESS",
+    "COMPLETED",
+    "CANCELLED",
+]
 
 
-class ProjectMilestone(Base):
-    __tablename__ = "project_milestones"
+class ProjectMilestoneCreate(BaseModel):
+    project_id: int = Field(gt=0)
+    title: str = Field(min_length=1, max_length=200)
+    description: str | None = Field(default=None, max_length=10000)
+    due_date: datetime | None = None
+    status: MilestoneStatus = "PENDING"
 
-    __table_args__ = (
-        CheckConstraint(
-            "status IN ('PENDING','IN_PROGRESS','COMPLETED','CANCELLED')",
-            name="valid_status",
-        ),
-        Index(
-            "ix_project_milestones_project_status",
-            "project_id",
-            "status",
-        ),
-    )
+    @field_validator("title")
+    @classmethod
+    def validate_title(cls, value: str) -> str:
+        value = value.strip()
+        if not value:
+            raise ValueError("Milestone title must not be blank.")
+        return value
 
-    id: Mapped[int] = mapped_column(primary_key=True, index=True)
+    @field_validator("description")
+    @classmethod
+    def validate_description(cls, value: str | None) -> str | None:
+        if value is not None:
+            value = value.strip()
+            if not value:
+                return None
+        return value
 
-    project_id: Mapped[int] = mapped_column(
-        ForeignKey("projects.id", ondelete="CASCADE"),
-        nullable=False,
-        index=True,
-    )
 
-    title: Mapped[str] = mapped_column(String(200), nullable=False)
-    description: Mapped[str | None] = mapped_column(Text, nullable=True)
+class ProjectMilestoneUpdate(BaseModel):
+    title: str | None = Field(default=None, min_length=1, max_length=200)
+    description: str | None = Field(default=None, max_length=10000)
+    due_date: datetime | None = None
+    status: MilestoneStatus | None = None
 
-    due_date: Mapped[datetime | None] = mapped_column(
-        DateTime(timezone=True),
-        nullable=True,
-    )
+    @field_validator("title")
+    @classmethod
+    def validate_title(cls, value: str | None) -> str | None:
+        if value is not None:
+            value = value.strip()
+            if not value:
+                raise ValueError("Milestone title must not be blank.")
+        return value
 
-    status: Mapped[str] = mapped_column(
-        String(20),
-        nullable=False,
-        default="PENDING",
-    )
+    @field_validator("description")
+    @classmethod
+    def validate_description(cls, value: str | None) -> str | None:
+        if value is not None:
+            value = value.strip()
+            if not value:
+                return None
+        return value
 
-    created_by: Mapped[int] = mapped_column(
-        ForeignKey("users.id", ondelete="RESTRICT"),
-        nullable=False,
-        index=True,
-    )
 
-    created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True),
-        nullable=False,
-        default=lambda: datetime.now(timezone.utc),
-    )
+class ProjectMilestoneResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
 
-    updated_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True),
-        nullable=False,
-        default=lambda: datetime.now(timezone.utc),
-        onupdate=lambda: datetime.now(timezone.utc),
-    )
+    id: int
+    project_id: int
+    title: str
+    description: str | None
+    due_date: datetime | None
+    status: MilestoneStatus
+    created_by: int
+    created_at: datetime
+    updated_at: datetime
+
+
+class ProjectMilestoneListResponse(BaseModel):
+    items: list[ProjectMilestoneResponse]
+    total: int
+    page: int
+    page_size: int

@@ -2,72 +2,36 @@
 from datetime import datetime
 from typing import Any
 
-from sqlalchemy import (
-    DateTime,
-    ForeignKey,
-    Index,
-    Integer,
-    JSON,
-    String,
-    func,
-)
-from sqlalchemy.orm import Mapped, mapped_column
-
-from db.base import Base
+from pydantic import BaseModel, ConfigDict, Field
 
 
-class AuditLog(Base):
-    __tablename__ = "audit_logs"
+class AuditLogResponse(BaseModel):
+    id: int
+    actor_id: int | None
+    actor_email: str | None
+    action: str
+    entity_type: str
+    entity_id: str | None
+    details: dict[str, Any]
+    ip_address: str | None
+    created_at: datetime
 
-    __table_args__ = (
-        Index("ix_audit_logs_actor_id_created_at", "actor_id", "created_at"),
-        Index("ix_audit_logs_entity_type_entity_id", "entity_type", "entity_id"),
-        Index("ix_audit_logs_action_created_at", "action", "created_at"),
-    )
+    model_config = ConfigDict(from_attributes=True)
 
-    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
 
-    # Nullable so audit history survives if a user account is deleted.
-    actor_id: Mapped[int | None] = mapped_column(
-        ForeignKey("users.id", ondelete="SET NULL"),
-        nullable=True,
-    )
+class AuditLogListResponse(BaseModel):
+    items: list[AuditLogResponse]
+    total: int
+    page: int
+    page_size: int
+    total_pages: int
 
-    actor_email: Mapped[str | None] = mapped_column(
-        String(255),
-        nullable=True,
-    )
 
-    action: Mapped[str] = mapped_column(
-        String(100),
-        nullable=False,
-        index=True,
-    )
+class AuditLogCreate(BaseModel):
+    """Internal schema for recording an audit event."""
 
-    entity_type: Mapped[str] = mapped_column(
-        String(100),
-        nullable=False,
-    )
-
-    entity_id: Mapped[str | None] = mapped_column(
-        String(100),
-        nullable=True,
-    )
-
-    details: Mapped[dict[str, Any]] = mapped_column(
-        JSON,
-        nullable=False,
-        default=dict,
-    )
-
-    ip_address: Mapped[str | None] = mapped_column(
-        String(45),
-        nullable=True,
-    )
-
-    created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True),
-        nullable=False,
-        server_default=func.now(),
-        index=True,
-    )
+    action: str = Field(min_length=1, max_length=100)
+    entity_type: str = Field(min_length=1, max_length=100)
+    entity_id: str | None = Field(default=None, max_length=100)
+    details: dict[str, Any] = Field(default_factory=dict)
+    ip_address: str | None = Field(default=None, max_length=45)

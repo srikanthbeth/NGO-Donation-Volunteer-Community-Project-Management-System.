@@ -1,38 +1,44 @@
-from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy.orm import Session
+from decimal import Decimal
 
-from db.session import get_db
-from models.user import User
-from routes.dependencies import get_current_user
-from schemas.dashboard import DashboardSummary
-from services.dashboard_service import get_dashboard_summary
+from pydantic import BaseModel, ConfigDict, Field
 
 
-router = APIRouter(
-    prefix="/api/v1/dashboard",
-    tags=["Dashboard"],
-)
+class CampaignGoalAchievement(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    active_campaigns: int = 0
+    total_goal_amount: Decimal = Decimal("0.00")
+    total_raised_amount: Decimal = Decimal("0.00")
+    achievement_percentage: float = 0.0
 
 
-@router.get(
-    "/summary",
-    response_model=DashboardSummary,
-)
-def dashboard_summary(
-    db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
-):
-    """
-    Return organization-wide dashboard metrics.
+class ResourceStockSummary(BaseModel):
+    active_resources: int = 0
+    total_quantity_available: int = 0
+    low_stock_resources: int = 0
 
-    Only SUPER_ADMIN and NGO_MANAGER users can view this dashboard.
-    """
-    allowed_roles = {"SUPER_ADMIN", "NGO_MANAGER"}
 
-    if current_user.role not in allowed_roles:
-        raise HTTPException(
-            status_code=403,
-            detail="You do not have permission to view the dashboard.",
-        )
+class ProjectBudgetUtilization(BaseModel):
+    total_project_budget: Decimal = Decimal("0.00")
+    approved_and_reimbursed_expenses: Decimal = Decimal("0.00")
+    utilization_percentage: float = 0.0
 
-    return get_dashboard_summary(db)
+
+class DashboardSummary(BaseModel):
+    total_donations: int = 0
+    confirmed_donations: int = 0
+
+    active_fundraising_campaigns: int = 0
+    campaign_goal_achievement: CampaignGoalAchievement
+
+    total_volunteers: int = 0
+    active_community_projects: int = 0
+
+    pending_project_approvals: int = 0
+    pending_expense_approvals: int = 0
+
+    total_beneficiaries_served: int = 0
+    resource_stock_levels: ResourceStockSummary
+    total_volunteer_hours: Decimal = Field(default=Decimal("0.00"))
+
+    project_budget_utilization: ProjectBudgetUtilization
